@@ -111,6 +111,19 @@ class Xrn:
     def urn_split (urn):
         return Xrn.urn_meaningful(urn).split('+')
 
+    @staticmethod
+    def filter_type(urns=None, type=None):
+        if urns is None: urns=[]
+        urn_list = []
+        if not type:
+            return urns
+
+        for urn in urns:
+            xrn = Xrn(xrn=urn)
+            if (xrn.type == type):
+                # Xrn is probably a urn so we can just compare types  
+                urn_list.append(urn)
+        return urn_list
     ####################
     # the local fields that are kept consistent
     # self.urn
@@ -118,7 +131,7 @@ class Xrn:
     # self.type
     # self.path
     # provide either urn, or (hrn + type)
-    def __init__ (self, xrn, type=None, id=None):
+    def __init__ (self, xrn="", type=None, id=None):
         if not xrn: xrn = ""
         # user has specified xrn : guess if urn or hrn
         self.id = id
@@ -127,9 +140,9 @@ class Xrn:
         if Xrn.is_urn(xrn):
             self.hrn=None
             self.urn=xrn
-            self.urn_to_hrn()
             if id:
-                self.hrn_to_urn()
+                self.urn = "%s:%s" % (self.urn, str(id))
+            self.urn_to_hrn()
         else:
             self.urn=None
             self.hrn=xrn
@@ -178,10 +191,22 @@ class Xrn:
         update the authority section of an existing urn
         """
         authority_hrn = self.get_authority_hrn()
-        if not authority_hrn.startswith(authority+"."):
-            self.hrn = authority + "." + self.hrn
-            self.hrn_to_urn()
+        if not authority_hrn.startswith(authority):
+            hrn = ".".join([authority,authority_hrn, self.get_leaf()])
+        else:
+            hrn = ".".join([authority_hrn, self.get_leaf()])
+
+        self.hrn = hrn
+        self.hrn_to_urn()
         self._normalize()
+
+    # sliver_id_parts is list that contains the sliver's
+    # slice id and node id
+    def get_sliver_id_parts(self):
+        sliver_id_parts = []
+        if self.type == 'sliver' or '-' in self.leaf:
+            sliver_id_parts = self.leaf.split('-')
+        return sliver_id_parts
 
     def urn_to_hrn(self):
         """
@@ -254,7 +279,7 @@ class Xrn:
             urn = "+".join(['',authority_string,self.type,Xrn.unescape(name)])
 
         if hasattr(self, 'id') and self.id:
-            urn = "%s-%s" % (urn, self.id)
+            urn = "%s:%s" % (urn, self.id)
 
         self.urn = Xrn.URN_PREFIX + urn
 

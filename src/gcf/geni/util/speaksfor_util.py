@@ -138,26 +138,26 @@ def verify_speaks_for(cred, tool_gid, speaking_for_urn, \
 
     # Credential has not expired
     if cred.expiration and cred.expiration < datetime.datetime.utcnow():
-        return False, None, "ABAC Credential expired at %s (%s)" % (cred.expiration.isoformat(), cred.get_summary_tostring())
+        return False, None, "ABAC Credential expired at %s (%s)" % (cred.expiration.isoformat(), cred.pretty_cred())
 
     # Must be ABAC
     if cred.get_cred_type() != ABACCredential.ABAC_CREDENTIAL_TYPE:
         return False, None, "Credential not of type ABAC but %s" % cred.get_cred_type
 
     if cred.signature is None or cred.signature.gid is None:
-        return False, None, "Credential malformed: missing signature or signer cert. Cred: %s" % cred.get_summary_tostring()
+        return False, None, "Credential malformed: missing signature or signer cert. Cred: %s" % cred.pretty_cred()
     user_gid = cred.signature.gid
     user_urn = user_gid.get_urn()
 
     # URN of signer from cert must match URN of 'speaking-for' argument
     if user_urn != speaking_for_urn:
         return False, None, "User URN from cred doesn't match speaking_for URN: %s != %s (cred %s)" % \
-            (user_urn, speaking_for_urn, cred.get_summary_tostring())
+            (user_urn, speaking_for_urn, cred.pretty_cred())
 
     tails = cred.get_tails()
     if len(tails) != 1: 
         return False, None, "Invalid ABAC-SF credential: Need exactly 1 tail element, got %d (%s)" % \
-            (len(tails), cred.get_summary_tostring())
+            (len(tails), cred.pretty_cred())
 
     user_keyid = get_cert_keyid(user_gid)
     tool_keyid = get_cert_keyid(tool_gid)
@@ -195,7 +195,7 @@ def verify_speaks_for(cred, tool_gid, speaking_for_urn, \
     if user_keyid != principal_keyid or \
             tool_keyid != subject_keyid or \
             role != ('speaks_for_%s' % user_keyid):
-        return False, None, "ABAC statement doesn't assert U.speaks_for(U)<-T (%s)" % cred.get_summary_tostring()
+        return False, None, "ABAC statement doesn't assert U.speaks_for(U)<-T (%s)" % cred.pretty_cred()
 
     # If schema provided, validate against schema
     if HAVELXML and schema and os.path.exists(schema):
@@ -205,7 +205,7 @@ def verify_speaks_for(cred, tool_gid, speaking_for_urn, \
         xmlschema = etree.XMLSchema(schema_doc)
         if not xmlschema.validate(tree):
             error = xmlschema.error_log.last_error
-            message = "%s: %s (line %s)" % (cred.get_summary_tostring(), error.message, error.line)
+            message = "%s: %s (line %s)" % (cred.pretty_cred(), error.message, error.line)
             return False, None, ("XML Credential schema invalid: %s" % message)
 
     if trusted_roots:
@@ -222,7 +222,7 @@ def verify_speaks_for(cred, tool_gid, speaking_for_urn, \
         except Exception, e:
             if user_gid.get_issuer() == tool_gid.get_issuer() and user_gid.get_parent() and not tool_gid.get_parent():
                 if logger:
-                    logger.debug("Tool cert didn't verify (%s). Adding tool issuer (%s) as parent (taken from user_gid)", e, user_gid.get_parent().get_printable_subject())
+                    logger.debug("Tool cert didn't verify (%s). Adding tool issuer (%s) as parent (taken from user_gid)", e, user_gid.get_parent().pretty_cert())
                 tool_gid.set_parent(user_gid.get_parent())
                 try:
                     tool_gid.verify_chain(trusted_roots)
@@ -270,7 +270,7 @@ def determine_speaks_for(logger, credentials, caller_gid, options, \
             if not isinstance(cred_value, ABACCredential):
                 cred = CredentialFactory.createCred(cred_value)
 
-#            print "Got a cred to check speaksfor for: %s" % cred.get_summary_tostring()
+#            print "Got a cred to check speaksfor for: %s" % cred.pretty_cred()
 #            #cred.dump(True, True)
 #            print "Caller: %s" % caller_gid.dump_string(2, True)
 
@@ -323,7 +323,7 @@ def create_sign_abaccred(tool_gid, user_gid, ma_gid, user_key_file, cred_filenam
     # Save it
     cred.save_to_file(cred_filename)
     print "Created ABAC credential: '%s' in file %s" % \
-            (cred.get_summary_tostring(), cred_filename)
+            (cred.pretty_cred(), cred_filename)
 
 # FIXME: Assumes xmlsec1 is on path
 # FIXME: Assumes signer is itself signed by an 'ma_gid' that can be trusted

@@ -268,7 +268,7 @@ class CredentialVerifier(object):
             if cred.get_cred_type() == cred.SFA_CREDENTIAL_TYPE:
                 cS = cred.get_gid_caller().get_urn()
             elif cred.get_cred_type() == ABACCredential.ABAC_CREDENTIAL_TYPE:
-                cS = cred.get_summary_tostring()
+                cS = cred.pretty_cred()
             else:
                 cS = "Unknown credential type %s" % cred.get_cred_type()
 

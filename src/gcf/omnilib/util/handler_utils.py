@@ -940,7 +940,7 @@ def _is_user_cert_expired(handler):
     except Exception, e:
         handler.logger.debug("Failed to create GID from %s: %s",
                              handler.framework.config['cert'], e)
-    if usergid and usergid.cert.has_expired():
+    if usergid and usergid.x509.has_expired():
         return True
     return False
 

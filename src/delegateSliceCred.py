@@ -235,12 +235,12 @@ omni.py --slicecred mySliceCred.xml -o getslicecred mySliceName\n\
     delegee_cert = GID(filename=opts.delegeegid)
 
     # confirm cert hasn't expired
-    if owner_cert.cert.has_expired():
-        sys.exit("Cred owner %s cert has expired at %s - cannot delegate" % (owner_cert.cert.get_subject(), owner_cert.cert.get_notAfter()))
+    if owner_cert.x509.has_expired():
+        sys.exit("Cred owner %s cert has expired at %s - cannot delegate" % (owner_cert.x509.get_subject(), owner_cert.x509.get_notAfter()))
 
     # confirm cert to delegate to hasn't expired
-    if delegee_cert.cert.has_expired():
-        sys.exit("Delegee %s cert has expired at %s - cannot delegate" % (delegee_cert.cert.get_subject(), delegee_cert.cert.get_notAfter()))
+    if delegee_cert.x509.has_expired():
+        sys.exit("Delegee %s cert has expired at %s - cannot delegate" % (delegee_cert.x509.get_subject(), delegee_cert.x509.get_notAfter()))
 
     if len(root_objects) > 0:
         try:
@@ -315,7 +315,7 @@ omni.py --slicecred mySliceCred.xml -o getslicecred mySliceName\n\
     if opts.debug:
         dcred.dump(True)
     else:
-        logger.info("Created delegated credential %s", dcred.get_summary_tostring())
+        logger.info("Created delegated credential %s", dcred.pretty_cred())
 
     # Save the result to a file
     bad = u'!"#%\'()*+,-./:;<=>?@[\]^_`{|}~'

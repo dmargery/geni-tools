@@ -35,6 +35,22 @@ class SfaFault(xmlrpclib.Fault):
             faultString += ": " + str(extra)
         xmlrpclib.Fault.__init__(self, faultCode, faultString)
 
+class Forbidden(SfaFault):
+    def __init__(self,  extra = None):
+        faultString = "FORBIDDEN"
+        SfaFault.__init__(self, GENICODE.FORBIDDEN, faultString, extra)
+
+class BadArgs(SfaFault):
+    def __init__(self,  extra = None):
+        faultString = "BADARGS"
+        SfaFault.__init__(self, GENICODE.BADARGS, faultString, extra)
+
+
+class CredentialMismatch(SfaFault):
+    def __init__(self,  extra = None):
+        faultString = "Credential mismatch"
+        SfaFault.__init__(self, GENICODE.CREDENTIAL_MISMATCH, faultString, extra) 
+
 class SfaInvalidAPIMethod(SfaFault):
     def __init__(self, method, interface = None, extra = None):
         faultString = "Invalid method " + method
@@ -100,6 +116,14 @@ class TreeException(SfaFault):
         self.value = value
         faultString = "Tree Exception: %(value)s, " % locals()
         SfaFault.__init__(self, GENICODE.ERROR, faultString, extra)
+    def __str__(self):
+        return repr(self.value)
+
+class SearchFailed(SfaFault):
+    def __init__(self, value, extra = None):
+        self.value = value
+        faultString = "%s does not exist here " % self.value
+        SfaFault.__init__(self, GENICODE.SEARCHFAILED, faultString, extra)
     def __str__(self):
         return repr(self.value)
 
@@ -307,7 +331,7 @@ class InvalidXML(SfaFault):
     def __init__(self, value, extra = None):
         self.value = value
         faultString = "Invalid XML Document: %(value)s" % locals()
-        SfaFault.__init__(self, GENICODE.ERROR, faultString, extra)
+        SfaFault.__init__(self, GENICODE.BADARGS, faultString, extra)
     def __str__(self):
         return repr(self.value)
 
@@ -319,10 +343,13 @@ class AccountNotEnabled(SfaFault):
         return repr(self.value)
 
 class CredentialNotVerifiable(SfaFault):
-    def __init__(self, value, extra = None):
+    def __init__(self, value=None, extra = None):
         self.value = value
-        faultString = "Unable to verify credential: %(value)s, " %locals()
-        SfaFault.__init__(self, GENICODE.ERROR, faultString, extra)
+        faultString = "Unable to verify credential" %locals()
+        if value:
+            faultString += ": %s" % value
+        faultString += ", "
+        SfaFault.__init__(self, GENICODE.BADARGS, faultString, extra)
     def __str__(self):
         return repr(self.value)
 
@@ -331,4 +358,16 @@ class CertExpired(SfaFault):
         self.value = value
         faultString = "%s cert is expired" % value
         SfaFault.__init__(self, GENICODE.ERROR, faultString, extra)
-   
+
+class SfatablesRejected(SfaFault):
+    def __init__(self, value, extra=None):
+        self.value =value
+        faultString = "%s rejected by sfatables"
+        SfaFault.__init__(self, GENICODE.FORBIDDEN, faultString, extra)
+
+class UnsupportedOperation(SfaFault):
+    def __init__(self, value, extra=None):
+        self.value = value
+        faultString = "Unsupported operation: %s" % value
+        SfaFault.__init__(self, GENICODE.UNSUPPORTED, faultString, extra)
+

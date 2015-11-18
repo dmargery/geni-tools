@@ -50,6 +50,9 @@ from M2Crypto import X509
 from ..util.faults import CertExpired, CertMissingParent, CertNotSignedByParent
 from ..util.sfalogging import logger
 
+# this tends to generate quite some logs for little or no value
+debug_verify_chain = False
+
 glo_passphrase_callback = None
 
 ##
@@ -301,10 +304,10 @@ class Keypair:
 class Certificate:
     digest = "sha256"
 
-    cert = None
-    issuerKey = None
-    issuerSubject = None
-    parent = None
+#    x509 = None
+#    issuerKey = None
+#    issuerSubject = None
+#    parent = None
     isCA = None # will be a boolean once set
 
     separator="-----parent-----"
@@ -321,6 +324,12 @@ class Certificate:
     # @param isCA If !=None, set whether this cert is for a CA
 
     def __init__(self, lifeDays=1825, create=False, subject=None, string=None, filename=None, isCA=None):
+        # these used to be defined in the class !
+        self.x509 = None
+        self.issuerKey = None
+        self.issuerSubject = None
+        self.parent = None
+
         self.data = {}
         if create or subject:
             self.create(lifeDays)
@@ -338,12 +347,12 @@ class Certificate:
     # Create a blank X509 certificate and store it in this object.
 
     def create(self, lifeDays=1825):
-        self.cert = crypto.X509()
+        self.x509 = crypto.X509()
         # FIXME: Use different serial #s
-        self.cert.set_serial_number(3)
-        self.cert.gmtime_adj_notBefore(0) # 0 means now
-        self.cert.gmtime_adj_notAfter(lifeDays*60*60*24) # five years is default
-        self.cert.set_version(2) # x509v3 so it can have extensions
+        self.x509.set_serial_number(3)
+        self.x509.gmtime_adj_notBefore(0) # 0 means now
+        self.x509.gmtime_adj_notAfter(lifeDays*60*60*24) # five years is default
+        self.x509.set_version(2) # x509v3 so it can have extensions
 
 
     ##
@@ -351,7 +360,7 @@ class Certificate:
     # certificate object.
 
     def load_from_pyopenssl_x509(self, x509):
-        self.cert = x509
+        self.x509 = x509
 
     ##
     # Load the certificate from a string
@@ -386,9 +395,9 @@ class Certificate:
         else:
             parts = string.split(Certificate.separator, 1)
 
-        self.cert = crypto.load_certificate(crypto.FILETYPE_PEM, parts[0])
+        self.x509 = crypto.load_certificate(crypto.FILETYPE_PEM, parts[0])
 
-        if self.cert is None:
+        if self.x509 is None:
             logger.warn("Loaded from string but cert is None: %s" % string)
 
         # if there are more certs, then create a parent and let the parent load
@@ -412,10 +421,10 @@ class Certificate:
     # @param save_parents If save_parents==True, then also save the parent certificates.
 
     def save_to_string(self, save_parents=True):
-        if self.cert is None:
+        if self.x509 is None:
             logger.warn("None cert in certificate.save_to_string")
             return ""
-        string = crypto.dump_certificate(crypto.FILETYPE_PEM, self.cert)
+        string = crypto.dump_certificate(crypto.FILETYPE_PEM, self.x509)
         if save_parents and self.parent:
             string = string + self.parent.save_to_string(save_parents)
         return string
@@ -467,7 +476,7 @@ class Certificate:
                 self.issuerReq = req
         if cert:
             # if a cert was supplied, then get the subject from the cert
-            subject = cert.cert.get_subject()
+            subject = cert.x509.get_subject()
         assert(subject)
         self.issuerSubject = subject
 
@@ -475,7 +484,7 @@ class Certificate:
     # Get the issuer name
 
     def get_issuer(self, which="CN"):
-        x = self.cert.get_issuer()
+        x = self.x509.get_issuer()
         return getattr(x, which)
 
     ##
@@ -489,21 +498,43 @@ class Certificate:
                 setattr(subj, key, name[key])
         else:
             setattr(subj, "CN", name)
-        self.cert.set_subject(subj)
+        self.x509.set_subject(subj)
 
     ##
     # Get the subject name of the certificate
 
     def get_subject(self, which="CN"):
-        x = self.cert.get_subject()
+        x = self.x509.get_subject()
         return getattr(x, which)
 
     ##
     # Get a pretty-print subject name of the certificate
+    # let's try to make this a little more usable as is makes logs hairy
+    # FIXME: Consider adding URN and UID back for GENI?
+    pretty_fields = ['email']
+    def filter_chunk(self, chunk):
+        for field in self.pretty_fields:
+            if field in chunk:
+                return " "+chunk
 
-    def get_printable_subject(self):
-        x = self.cert.get_subject()
-        return "[ OU: %s, CN: %s, SubjectAltName: %s ]" % (getattr(x, "OU"), getattr(x, "CN"), self.get_data())
+    def pretty_cert(self):
+        message = "[Cert."
+        x = self.x509.get_subject()
+        ou = getattr(x, "OU")
+        if ou: message += " OU: {}".format(ou)
+        cn = getattr(x, "CN")
+        if cn: message += " CN: {}".format(cn)
+        data = self.get_data(field='subjectAltName')
+        if data:
+            message += " SubjectAltName:"
+            counter = 0
+            filtered = [self.filter_chunk(chunk) for chunk in data.split()]
+            message += " ".join( [f for f in filtered if f])
+            omitted = len ([f for f in filtered if not f])
+            if omitted:
+                message += "..+{} omitted".format(omitted)
+        message += "]"
+        return message
 
     ##
     # Get the public key of the certificate.
@@ -512,7 +543,7 @@ class Certificate:
 
     def set_pubkey(self, key):
         assert(isinstance(key, Keypair))
-        self.cert.set_pubkey(key.get_openssl_pkey())
+        self.x509.set_pubkey(key.get_openssl_pkey())
 
     ##
     # Get the public key of the certificate.
@@ -521,7 +552,7 @@ class Certificate:
     def get_pubkey(self):
         m2x509 = X509.load_cert_string(self.save_to_string())
         pkey = Keypair()
-        pkey.key = self.cert.get_pubkey()
+        pkey.key = self.x509.get_pubkey()
         pkey.m2key = m2x509.get_pubkey()
         return pkey
 
@@ -576,7 +607,7 @@ class Certificate:
 #            raise "Cannot add extension %s which had val %s with new val %s" % (name, oldExtVal, value)
 
         ext = crypto.X509Extension (name, critical, value)
-        self.cert.add_extensions([ext])
+        self.x509.add_extensions([ext])
 
     ##
     # Get an X509 extension from the certificate
@@ -633,11 +664,11 @@ class Certificate:
 
     def sign(self):
         logger.debug('certificate.sign')
-        assert self.cert != None
+        assert self.x509 != None
         assert self.issuerSubject != None
         assert self.issuerKey != None
-        self.cert.set_issuer(self.issuerSubject)
-        self.cert.sign(self.issuerKey.get_openssl_pkey(), self.digest)
+        self.x509.set_issuer(self.issuerSubject)
+        self.x509.sign(self.issuerKey.get_openssl_pkey(), self.digest)
 
     ##
     # Verify the authenticity of a certificate.
@@ -653,7 +684,7 @@ class Certificate:
 
         # XXX alternatively, if openssl has been patched, do the much simpler:
         # try:
-        #   self.cert.verify(pkey.get_openssl_key())
+        #   self.x509.verify(pkey.get_openssl_key())
         #   return 1
         # except:
         #   return 0
@@ -717,37 +748,45 @@ class Certificate:
         # until a certificate is found that is signed by a trusted root.
 
         # verify expiration time
-        if self.cert.has_expired():
-            logger.debug("verify_chain: NO, Certificate %s has expired" % self.get_printable_subject())
-            raise CertExpired(self.get_printable_subject(), "client cert")
+        if self.x509.has_expired():
+            if debug_verify_chain:
+                logger.debug("verify_chain: NO, Certificate %s has expired" % self.pretty_cert())
+            raise CertExpired(self.pretty_cert(), "client cert")
 
         # if this cert is signed by a trusted_cert, then we are set
         for trusted_cert in trusted_certs:
             if self.is_signed_by_cert(trusted_cert):
                 # verify expiration of trusted_cert ?
-                if not trusted_cert.cert.has_expired():
-                    logger.debug("verify_chain: YES. Cert %s signed by trusted cert %s"%(
-                            self.get_printable_subject(), trusted_cert.get_printable_subject()))
+                if not trusted_cert.x509.has_expired():
+                    if debug_verify_chain:
+                        logger.debug("verify_chain: YES. Cert %s signed by trusted cert %s"%(
+                            self.pretty_cert(), trusted_cert.pretty_cert()))
                     return trusted_cert
                 else:
-                    logger.debug("verify_chain: NO. Cert %s is signed by trusted_cert %s, but that signer is expired..."%(
-                            self.get_printable_subject(),trusted_cert.get_printable_subject()))
-                    raise CertExpired(self.get_printable_subject()," signer trusted_cert %s"%trusted_cert.get_printable_subject())
+                    if debug_verify_chain:
+                        logger.debug("verify_chain: NO. Cert %s is signed by trusted_cert %s, but that signer is expired..."%(
+                            self.pretty_cert(),trusted_cert.pretty_cert()))
+                    raise CertExpired(self.pretty_cert()," signer trusted_cert %s"%trusted_cert.pretty_cert())
 
         # if there is no parent, then no way to verify the chain
         if not self.parent:
-            logger.debug("verify_chain: NO. %s has no parent and issuer %s is not in %d trusted roots"%(self.get_printable_subject(), self.get_issuer(), len(trusted_certs)))
-            raise CertMissingParent(self.get_printable_subject() + ": Issuer %s is not one of the %d trusted roots, and cert has no parent." % (self.get_issuer(), len(trusted_certs)))
+            if debug_verify_chain:
+                logger.debug("verify_chain: NO. %s has no parent and issuer %s is not in %d trusted roots"%\
+                             (self.pretty_cert(), self.get_issuer(), len(trusted_certs)))
+            raise CertMissingParent(self.pretty_cert() + \
+                                    ": Issuer %s is not one of the %d trusted roots, and cert has no parent." %\
+                                    (self.get_issuer(), len(trusted_certs)))
 
         # if it wasn't signed by the parent...
         if not self.is_signed_by_cert(self.parent):
-            logger.debug("verify_chain: NO. %s is not signed by parent %s, but by %s"%\
-                             (self.get_printable_subject(), 
-                              self.parent.get_printable_subject(), 
+            if debug_verify_chain:
+                logger.debug("verify_chain: NO. %s is not signed by parent %s, but by %s"%\
+                             (self.pretty_cert(),
+                              self.parent.pretty_cert(),
                               self.get_issuer()))
             raise CertNotSignedByParent("%s: Parent %s, issuer %s"\
-                                            % (self.get_printable_subject(), 
-                                               self.parent.get_printable_subject(),
+                                            % (self.pretty_cert(),
+                                               self.parent.pretty_cert(),
                                                self.get_issuer()))
 
         # Confirm that the parent is a CA. Only CAs can be trusted as
@@ -758,13 +797,14 @@ class Certificate:
         # extension and hope there are no other basicConstraints
         if not self.parent.isCA and not (self.parent.get_extension('basicConstraints') == 'CA:TRUE'):
             logger.warn("verify_chain: cert %s's parent %s is not a CA" % \
-                            (self.get_printable_subject(), self.parent.get_printable_subject()))
-            raise CertNotSignedByParent("%s: Parent %s not a CA" % (self.get_printable_subject(),
-                                                                    self.parent.get_printable_subject()))
+                            (self.pretty_cert(), self.parent.pretty_cert()))
+            raise CertNotSignedByParent("%s: Parent %s not a CA" % (self.pretty_cert(),
+                                                                    self.parent.pretty_cert()))
 
         # if the parent isn't verified...
-        logger.debug("verify_chain: .. %s, -> verifying parent %s"%\
-                         (self.get_printable_subject(),self.parent.get_printable_subject()))
+        if debug_verify_chain:
+            logger.debug("verify_chain: .. %s, -> verifying parent %s"%\
+                         (self.pretty_cert(),self.parent.pretty_cert()))
         self.parent.verify_chain(trusted_certs)
 
         return
@@ -772,9 +812,9 @@ class Certificate:
     ### more introspection
     def get_extensions(self):
         # pyOpenSSL does not have a way to get extensions
-        triples=[]
+        triples = []
         m2x509 = X509.load_cert_string(self.save_to_string())
-        nb_extensions=m2x509.get_ext_count()
+        nb_extensions = m2x509.get_ext_count()
         logger.debug("X509 had %d extensions"%nb_extensions)
         for i in range(nb_extensions):
             ext=m2x509.get_ext_at(i)
@@ -785,7 +825,7 @@ class Certificate:
         return self.data.keys()
 
     def get_all_datas (self):
-        triples=self.get_extensions()
+        triples = self.get_extensions()
         for name in self.get_data_names():
             triples.append( (name,self.get_data(name),'data',) )
         return triples
@@ -799,14 +839,14 @@ class Certificate:
 
     def dump_string (self,show_extensions=False):
         result = ""
-        result += "CERTIFICATE for %s\n"%self.get_printable_subject()
+        result += "CERTIFICATE for %s\n"%self.pretty_cert()
         result += "Issued by %s\n"%self.get_issuer()
         filename=self.get_filename()
         if filename: result += "Filename %s\n"%filename
         if show_extensions:
-            all_datas=self.get_all_datas()
+            all_datas = self.get_all_datas()
             result += " has %d extensions/data attached"%len(all_datas)
-            for (n,v,c) in all_datas:
+            for (n, v, c) in all_datas:
                 if c=='data':
                     result += "   data: %s=%s\n"%(n,v)
                 else:

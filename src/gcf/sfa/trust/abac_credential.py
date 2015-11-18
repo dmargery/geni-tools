@@ -23,8 +23,9 @@
 
 from __future__ import absolute_import
 
-from .credential import Credential, append_sub
+from .credential import Credential, append_sub, DEFAULT_CREDENTIAL_LIFETIME
 from ..util.sfalogging import logger
+from ..util.sfatime import SFATIME_FORMAT
 
 from StringIO import StringIO
 from xml.dom.minidom import Document, parseString
@@ -163,7 +164,7 @@ class ABACCredential(Credential):
         filename=self.get_filename()
         if filename: result += "Filename %s\n"%filename
         if self.expiration:
-            result +=  "\texpiration: %s \n" % self.expiration.isoformat()
+            result +=  "\texpiration: %s \n" % self.expiration.strftime(SFATIME_FORMAT)
 
         result += "\tHead: %s\n" % self.get_head() 
         for tail in self.get_tails():
@@ -186,7 +187,7 @@ class ABACCredential(Credential):
 
     # sounds like this should be __repr__ instead ??
     # Produce the ABAC assertion. Something like [ABAC cred: Me.role<-You] or similar
-    def get_summary_tostring(self):
+    def pretty_cred(self):
         result = "[ABAC cred: " + str(self.get_head())
         for tail in self.get_tails():
             result += "<-%s" % str(tail)
@@ -259,7 +260,7 @@ class ABACCredential(Credential):
         if self.expiration.tzinfo is not None and self.expiration.tzinfo.utcoffset(self.expiration) is not None:
             # TZ aware. Make sure it is UTC
             self.expiration = self.expiration.astimezone(tz.tzutc())
-        append_sub(doc, cred, "expires", self.expiration.strftime('%Y-%m-%dT%H:%M:%SZ')) # RFC3339
+        append_sub(doc, cred, "expires", self.expiration.strftime(SFATIME_FORMAT)) # RFC3339
 
         abac = doc.createElement("abac")
         rt0 = doc.createElement("rt0")
