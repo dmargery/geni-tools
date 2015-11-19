@@ -510,7 +510,7 @@ class Certificate:
     ##
     # Get a pretty-print subject name of the certificate
     # let's try to make this a little more usable as is makes logs hairy
-    # FIXME: Consider adding URN and UID back for GENI?
+    # FIXME: Consider adding 'urn:publicid' and 'uuid' back for GENI?
     pretty_fields = ['email']
     def filter_chunk(self, chunk):
         for field in self.pretty_fields:
